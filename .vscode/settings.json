@@ -1,0 +1,20 @@
+{
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": [
+          "comment",
+          "comment.line.percentage.matlab"
+        ],
+        "settings": {
+          "foreground": "#008000"
+        }
+      }
+    ]
+  },
+  "editor.semanticTokenColorCustomizations": {
+    "rules": {
+      "comment": "#008000"
+    }
+  }
+}
