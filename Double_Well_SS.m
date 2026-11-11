@@ -1,7 +1,6 @@
-
-%*********************************************Double Well VNA ER Updated***************************************************
-
+%*********************************************SS Double Well VNA ER Updated***************************************************
 %test_flag=1, do ER only; flag=2, do VNA only; flag=3, do VNA then ER; flag=4, do ER then VNA
+
 function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_SS(FFL_or_Phip, phin_path1, phin_sweep1, phip_levels, power, avg, bw, fstart, fstop, npoints, sample_range, pattest, ntest, edges, bitwise, test_flag, tag, plot_flag)
     global imb iob icb itb idb ibs ffl
     global PATTERN pat1 pat1b pat2b pat3b pat4b pat100b pat400b pat1000b pat4000b pat10000b pat40000b pcl
@@ -43,65 +42,31 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
     %Comp initializing
     e1=[];
     e2=[];
-    b1=[];
-    b2=[];
     e1_pat=[];
     e2_pat=[];
-
     e1_ns=[]; 
     e1_ds=[];
     e1_os=[];
     e2_ns=[];
     e2_ds=[];
     e2_os=[];
+    %splitcurrent = 0; %May be needed in future edits
 
-    e1_iter=[];
-    e1_pat_iter =[];
-    e1_ns_iter =[];
-    e1_ds_iter =[];
-    e1_os_iter =[]; 
-
-    e2_iter=[];
-    e2_pat_iter =[];
-    e2_ns_iter =[];
-    e2_ds_iter =[];
-    e2_os_iter =[];
-    
-    edges;
-    splitcurrent = 0;
-    if test_flag~=2                                             %If bitwise is true, assign bit value based on test pattern expected 1's
-        if islogical(bitwise) && bitwise
-            bit_flag=true;
-            bitwise=sum(PATTERN(pattest).vdat,"all");
-        elseif (islogical(bitwise) && ~bitwise) || bitwise<=0   %If bitwise is false or 0, still assign bit value for full bitwise tests but later only plot pattern error rate
-            bit_flag=false;
-            bitwise=sum(PATTERN(pattest).vdat,"all");
-        elseif bitwise>0                                        %If bitwise is a positive whole number, use THAT number for BER calculations
-            bit_flag=true;
-            bitwise=round(bitwise);
+    if test_flag~=2
+        bits=sum(PATTERN(pattest).vdat,"all");
+        if isnumeric(bitwise) && bitwise>0
+            bits=round(bitwise);
         end
-     end
+    end
 
     %VNA initializing
     f1={};
-    dataF1={};
-    dataS1={};
     Data1={};
     AvgPwr1={};
     f2={};
-    dataF2={};
-    dataS2={};
     Data2={};
     AvgPwr2={};   
-    avgp=[];
-    Data1_iter={}; 
-    f1_iter ={}; 
-    dataF1_iter={}; 
-    dataS1_iter={}; 
-    Data2_iter={}; 
-    f2_iter ={}; 
-    dataF2_iter={}; 
-    dataS2_iter={}; 
+    
     if test_flag ~= 1
         clear v
         v = PXI_VNA();
@@ -128,8 +93,8 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
         maxi=sample_range(1,2);
         idx1=find(rang>=mini,1,"first");
         idx2=find(rang<=maxi,1,"last");
-        if isempty(idx1) || isnan(idx1), idx1=1; end
-        if isempty(idx2) || isnan(idx2), idx2=length(rang); end
+        if isempty(idx1), idx1=1; end
+        if isempty(idx2), idx2=length(rang); end
     end
 
     % icb is array of [DCFlux1, DCFlux2], also called icb(1) and icb(2), they are currents applied to induce flux in JJ1 and JJ2. 
@@ -139,6 +104,15 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
     phin0=phin_path1(1);                    %Starting Phi minus for both sweeps
     phin_path2=2*phin_path1(1)-phin_path1;  %Define return initialization sweep based on first initialization sweep
     phin_sweep2=2*phin_sweep1(end)-phin_sweep1;%Define return test sweep based on first test sweep
+
+    if length(icb_chan)==1                  %With 1 icb_chan bias, assume 1-line Phi-. Also use FFl 
+        Phin=1;
+        FFL_or_Phip="FFL";
+        Phin_string=string("1-line Phi-");
+    elseif length(icb_chan)==2              %With 2 icb_chan bias, assume 2-line Phi- = DCFLux1 + DCFlux2. Can be used with Phi+= DCFLux1 - DCFlux2 or with ffl_chan
+        Phin=0;
+        Phin_string=string("2-line Phi-");
+    end
 
     %Set test to use Phip or FFL; if using fast flux, redefine terms to use ffl0 and ffl_PI and set all phip variables to 0
     if istrue(FFL_or_Phip) || contains(FFL_or_Phip, "f", "IgnoreCase", true)
@@ -158,78 +132,14 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
         return
     end
 
-    % if loop_times==1            %Single iteration of full DW test
-        disp("************************************************************Sweep1")
-        [e1, e1_pat, e1_ns, e1_ds, e1_os, Data1,  f1, dataF1, dataS1]=DW_Test(phin_path1,phin_sweep1);    
-        disp("************************************Sweep2")
-        [e2, e2_pat, e2_ns, e2_ds, e2_os, Data2,  f2, dataF2, dataS2]=DW_Test(phin_path2,phin_sweep2); 
-    %     e1=mean(e1);
-    %     e2=mean(e2);
-    %     e1_pat=mean(e1_pat);
-    %     e2_pat=mean(e2_pat);
-    %     e1_ns=mean(e1_ns);
-    %     e2_ns=mean(e2_ns);
-    %     e1_ds=mean(e1_ds);
-    %     e2_ds=mean(e2_ds);
-    %     e1_os=mean(e1_os);
-    %     e2_os=mean(e2_os);    
-
-    %elseif loop_times>1         %Do full DW tests iterated loop_times, average all results
-        
-            % fprintf("*****************************Iteration %d Sweep1*******************\n",loops)
-            % [e1_iter(:),e1_pat_iter(:), e1_ns_iter(:), e1_ds_iter(:), e1_os_iter(:),  Data1_iter(:), f1_iter(:), dataF1_iter(:), dataS1_iter(:)]=DW_Test(phin_path1,phin_sweep1);         
-            % fprintf("*****************Iteration %d Sweep2*****\n",loops)
-            % [e2_iter(loops,:),e2_pat_iter(loops,:), e2_ns_iter(loops,:), e2_ds_iter(loops,:), e2_os_iter(loops,:),  Data2_iter(loops,:), f2_iter(loops,:), dataF2_iter(loops,:), dataS2_iter(loops,:)]=DW_Test(phin_path2,phin_sweep2);
-            % 
-        %Average data for each loop independently (combine all results from each ntest)
-        % e1=mean(e1_iter,2);
-        % e2=mean(e2_iter,2);
-        % e1_pat=mean(e1_pat_iter,2);
-        % e2_pat=mean(e2_pat_iter,2);
-        % e1_ns=mean(e1_ns_iter,2);
-        % e2_ns=mean(e2_ns_iter,2);
-        % e1_ds=mean(e1_ds_iter,2);
-        % e2_ds=mean(e2_ds_iter,2);
-        % e1_os=mean(e1_os_iter,2);
-        % e2_os=mean(e2_os_iter,2);
-
-        % e1=e1_iter;
-        % e2=e2_iter;
-        % e1_pat=e1_pat_iter;
-        % e2_pat=e2_pat_iter;
-        % e1_ns=e1_ns_iter;
-        % e2_ns=e2_ns_iter;
-        % e1_ds=e1_ds_iter;
-        % e2_ds=e2_ds_iter;
-        % e1_os=e1_os_iter;
-        % e2_os=e2_os_iter;
-
-
-
-
-%{
-        Data1 = cell(1, size(Data1_iter, 2));
-        f1 = cell(1, size(f1_iter, 2));
-        dataF1 = cell(1, size(dataF1_iter, 2));
-        dataS1 = cell(1, size(dataS1_iter, 2));
-        Data2 = cell(1, size(Data2_iter, 2));
-        f2 = cell(1, size(f2_iter, 2));
-        dataF2 = cell(1, size(dataF2_iter, 2));
-        dataS2 = cell(1, size(dataS2_iter, 2));        
-        for col = 1:size(Data1_iter, 2)
-            Data1{col} = mean(cat(3, Data1_iter{:, col}), 3, 'omitnan');
-            f1{col} = mean(cat(3, f1_iter{:, col}), 3, 'omitnan');
-            dataF1{col} = mean(cat(3, dataF1_iter{:, col}), 3, 'omitnan');
-            dataS1{col} = mean(cat(3, dataS1_iter{:, col}), 3, 'omitnan');        
-            Data2{col} = mean(cat(3, Data2_iter{:, col}), 3, 'omitnan');
-            f2{col} = mean(cat(3, f2_iter{:, col}), 3, 'omitnan');
-            dataF2{col} = mean(cat(3, dataF2_iter{:, col}), 3, 'omitnan');
-            dataS2{col} = mean(cat(3, dataS2_iter{:, col}), 3, 'omitnan');
-        end
-    end
-%}
-
-    c_ma(icb_chan,[0,0]);                                               %turn off Phi+, Phi-, and FFL
+    %Each single shot test in ntest runs through full paths, similar to loop_times
+    disp("************************************************************Sweep1")
+    [e1, e1_pat, e1_ns, e1_ds, e1_os, Data1,  f1]=DW_Test(phin_path1,phin_sweep1);    
+    disp("************************************Sweep2")
+    [e2, e2_pat, e2_ns, e2_ds, e2_os, Data2,  f2]=DW_Test(phin_path2,phin_sweep2); 
+    
+    %turn off Phi+, Phi-, and FFL
+    if Phin, c_ma(icb_chan,0); else, c_ma(icb_chan,[0,0]); end
     if FF, c_ma(ffl_chan,0); end   
     
     disp("***********************************************************************")
@@ -247,11 +157,8 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
     %Add tag for DUT based in icb_chan name
     icb_char=char(string(icb_chan(1)));
     und_idx=find(icb_char == '_', 1);
-    if ~isempty(und_idx)
-        dev_string=string(icb_char(1:und_idx-1));
-    else
-        dev_string="";
-    end
+    if ~isempty(und_idx), dev_string=string(icb_char(1:und_idx-1)); else, dev_string=""; end
+
     %Add tag to device string labeling test order
     switch test_flag
         case 1
@@ -266,69 +173,89 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
 
     if plot_flag
         %Plot DW of comp BER
-        if test_flag~=2  
+        if test_flag~=2
+            cutoff=.5;
+            e1_cutoff=e1>cutoff;
+            e2_cutoff=e2>cutoff;  
+            if (ischar(bitwise) || isstring(bitwise)) && contains(lower(string(bitwise)),"all")
+                bit_visibility="on";
+                pattern_visibility="on";
+                cutoff_visibility="on";
+                ds_os_visibility="on";
+                plot_type="All ERs";
+            elseif (ischar(bitwise) || isstring(bitwise)) && contains(lower(string(bitwise)),"cutoff")
+                bit_visibility="off";
+                pattern_visibility="off";
+                cutoff_visibility="on";
+                ds_os_visibility="off";
+                plot_type="Pat Cutoff ER";
+            elseif ((isnumeric(bitwise) && bitwise<=0) || ...
+                    (islogical(bitwise) && ~bitwise)) || ...
+                    ((ischar(bitwise) || isstring(bitwise)) && contains(lower(string(bitwise)),"pat"))
+                bit_visibility="off";
+                pattern_visibility="on";
+                cutoff_visibility="off";
+                ds_os_visibility="off";
+                plot_type="Pat ER";
+            else
+                bit_visibility="on";
+                pattern_visibility="off";
+                cutoff_visibility="off";
+                ds_os_visibility="off";
+                plot_type="Bit ER";
+            end
             % Code for plot of DW comp Total bit ER and also ER due to double switch, offcycle switch               
-            if bit_flag
-                figure
-                hold on
-                leg1="Right Well "+string(mean(e1)*100)+"% Tot BER";
-                leg2="Left Well "+ string(mean(e2)*100)+"% Tot BER";
-                leg3="Right Well "+string(mean(e1_ds+e1_os)*100)+"% DS+OS BER";
-                leg4="Left Well "+string(mean(e2_ds+e2_os)*100)+"% DS+OS BER";
-    
-                plot([1:ntest],e1,"o","DisplayName", string(leg1));
-                plot([1:ntest],e2,'*',"DisplayName", string(leg2));
-                plot([1:ntest],e1_ds+e1_os,"DisplayName", string(leg3), "Visible", "off", "YLimInclude","off","HandleVisibility","off") 
-                plot([1:ntest],e2_ds+e2_os,"DisplayName", string(leg4), "Visible", "off", "YLimInclude","off","HandleVisibility","off")  
-                ylim([0,1]);
-                xlabel("ntest")
-                ylabel("BER")
-                legend
-                fig_name="SS Bit ER at "+string(FFL_or_Phip)+"="+PI_string+" Phi-=" + string(phin_sweep1(end))+ " mA, "+ temp_string+string(dev_string)+string(ntest)+"x"+string(bitwise)+"b";    
-                title({string(fig_name),string(tag)})
-                saveas(gcf,string(fig_name) + " " +string(tag)+".fig");
-                hold off
-                close(gcf)
-                
-                figure
-                histogram(e1,50,"FaceColor","blue","BinLimits", [0 1])
-                xlabel("BER by Each Test Pattern")
-                ylabel("Count")
-                fig_name="Hist SS Right Well Pat BER, "+string(FFL_or_Phip)+"="+PI_string+" Phi-=" + string(phin_sweep1(end))+ " mA, "+ temp_string+string(dev_string)+string(ntest)+"x"+string(bitwise)+"b";    
-                title({string(fig_name),string(tag)})
-                xlim([0,1.05])
-                saveas(gcf,string(fig_name) + " " +string(tag)+".fig");
-                close(gcf)
+            
+            leg1="Right Well "+string(mean(e1)*100)+"% Bit ER";
+            leg2="Left Well " +string(mean(e2)*100)+"% Bit ER";
+            leg3="Right Well "+string(mean(e1_ds+e1_os)*100)+"% DS+OS BER";
+            leg4="Left Well " +string(mean(e2_ds+e2_os)*100)+"% DS+OS BER";
+            leg5="Right Well "+string(mean(e1_pat)*100)+"% Pat ER";
+            leg6="Left Well " +string(mean(e2_pat)*100)+"% Pat ER";
+            leg7="Right Well "+string(mean(e1_cutoff)*100)+"% Pat ER >"+string(100*cutoff)+"% Cutoff";
+            leg8="Left Well " +string(mean(e2_cutoff)*100)+"% Pat ER >"+string(100*cutoff)+"% Cutoff";
+            figure
+            hold on
+            plot([1:ntest],e1,"o","DisplayName", string(leg1),"Visible",bit_visibility,"HandleVisibility",bit_visibility);
+            plot([1:ntest],e2,'*',"DisplayName", string(leg2),"Visible",bit_visibility,"HandleVisibility",bit_visibility);
+            plot([1:ntest],e1_ds+e1_os,"o","DisplayName", string(leg3),"Visible",ds_os_visibility,"YLimInclude","off","HandleVisibility",ds_os_visibility) 
+            plot([1:ntest],e2_ds+e2_os,"*","DisplayName", string(leg4),"Visible",ds_os_visibility,"YLimInclude","off","HandleVisibility",ds_os_visibility)
+            plot([1:ntest],e1_pat,"o","DisplayName",string(leg5),"Visible",pattern_visibility,"YLimInclude","off","HandleVisibility",pattern_visibility)
+            plot([1:ntest],e2_pat,'*',"DisplayName",string(leg6),"Visible",pattern_visibility,"YLimInclude","off","HandleVisibility",pattern_visibility)
+            plot([1:ntest],e1_cutoff,"o","DisplayName",string(leg7),"Visible",cutoff_visibility,"YLimInclude","off","HandleVisibility",cutoff_visibility)
+            plot([1:ntest],e2_cutoff,'*',"DisplayName",string(leg8),"Visible",cutoff_visibility,"YLimInclude","off","HandleVisibility",cutoff_visibility)
 
-                figure
-                histogram(e2,50,"FaceColor","red","BinLimits", [0 1])
-                xlabel("BER by Each Test Pattern")
-                ylabel("Count")
-                fig_name="Hist SS Left Well Pat BER "+string(FFL_or_Phip)+"="+PI_string+" Phi-=" + string(phin_sweep1(end))+ " mA, "+ temp_string+string(dev_string)+string(ntest)+"x"+string(bitwise)+"b";    
-                title({string(fig_name),string(tag)})
-                xlim([0,1.05])
-                saveas(gcf,string(fig_name) + " " +string(tag)+".fig");
-                close(gcf)
+            ylim([-.1,1.1]);
+            xlabel("ntest")
+            ylabel("Error Rate")
+            legend('Location','northeast','Orientation','vertical');
+            fig_name="SS "+plot_type+" at "+string(FFL_or_Phip)+"="+PI_string+" Phi-=" + string(phin_sweep1(end))+ " mA, "+ temp_string+string(dev_string)+string(ntest)+"x"+string(bits)+"b";    
+            title({string(fig_name),string(tag)})
+            saveas(gcf,string(fig_name) + " " +string(tag)+".fig");
+            hold off
+            close(gcf)
+            
+            bins = linspace(0,1,max(101,bits+1));
+            figure 
+            hold on
+            histogram(e1,bins,'DisplayStyle','stairs','EdgeColor','b','LineWidth',3,"DisplayName",string(leg1),"Visible",bit_visibility,"HandleVisibility",bit_visibility);
+            histogram(e2,bins,'DisplayStyle','stairs','EdgeColor','r','LineWidth',3,"DisplayName",string(leg2),"Visible",bit_visibility,"HandleVisibility",bit_visibility);
+            histogram(e1_ds+e1_os,bins,"DisplayName",string(leg3),"Visible",ds_os_visibility,"HandleVisibility",ds_os_visibility)
+            histogram(e2_ds+e2_os,bins,"DisplayName",string(leg4),"Visible",ds_os_visibility,"HandleVisibility",ds_os_visibility)
+            histogram(e1_pat,bins,"DisplayName",string(leg5),"Visible",pattern_visibility,"HandleVisibility",pattern_visibility)
+            histogram(e2_pat,bins,"DisplayName",string(leg6),"Visible",pattern_visibility,"HandleVisibility",pattern_visibility)
+            histogram(e1_cutoff,bins,"DisplayName",string(leg7),"Visible",cutoff_visibility,"HandleVisibility",cutoff_visibility)
+            histogram(e2_cutoff,bins,"DisplayName",string(leg8),"Visible",cutoff_visibility,"HandleVisibility",cutoff_visibility)
 
-            elseif ~bit_flag
-              % Code for plot of DW comp Pattern ER
-                figure
-                hold on
-                leg1="Right Well "+string(mean(e1_pat)*100)+"% Pat ER";
-                leg2="Left Well "+string(mean(e2_pat)*100)+"% Pat ER";
-    
-                plot([1:ntest],e1_pat,"o","DisplayName", string(leg1));
-                plot([1:ntest],e2_pat,'*',"DisplayName", string(leg2));
-                ylim([0,1]);
-                xlabel("ntest")
-                ylabel("Pat ER")
-                legend
-                fig_name="SS Pat ER at "+string(FFL_or_Phip)+"="+PI_string+" Phi-=" + string(phin_sweep1(end))+ " mA, "+ temp_string+string(dev_string)+string(ntest)+"x"+string(bitwise)+"b";     
-                title({string(fig_name),string(tag)})
-                saveas(gcf,string(fig_name) + " " +string(tag)+".fig");
-                hold off
-                close(gcf)
-            end %bitflag
+            set(gca,'YScale','log')
+            xlabel('Error Rate by Test')
+            ylabel('Count (Log Scale)')
+            legend('Location','north','Orientation','vertical');
+            fig_name="Hist SS "+plot_type+", "+string(FFL_or_Phip)+"="+PI_string+" Phi-=" + string(phin_sweep1(end))+ " mA, "+ temp_string+string(dev_string)+string(ntest)+"x"+string(bits)+"b";    
+            title({string(fig_name),string(tag)})
+            xlim([-.05,1.05])
+            saveas(gcf,string(fig_name) + " " +string(tag)+".fig");
+            close(gcf)
         end %test_flag
     end %plot_flag
 
@@ -375,7 +302,6 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
                 plot([1:ntest], p1(:,4:4:end),"o","DisplayName", string(leg7)+string(round(mean(sample_range(k,:))./1e9,2)) + "GHz", "Visible", "off", "YLimInclude","off","HandleVisibility","off") 
                 plot([1:ntest], p2(:,4:4:end),'*',"DisplayName", string(leg8)+string(round(mean(sample_range(k,:))./1e9,2)) + "GHz", "Visible", "off", "YLimInclude","off","HandleVisibility","off")                 
             end
-   
             axis tight
             hold off
             xlabel("ntest")
@@ -447,64 +373,69 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
         end %plot_flag
     end %test_flag  
 
-
    %sweep test for both phip and ffl, use for sweep up and sweep down
    function  [e_test, e_pat_test,  e_ns_test, e_ds_test, e_os_test, Data_test, f_test, dataF_test, dataS_test]= DW_Test(phin_path_arr, phin_sweep_arr)
-        e_test=[];      %Temporary function variable initialization 
-        e_pat_test=[];
-        e_ns_test=[];
-        e_ds_test=[];
-        e_os_test=[];
-        f_test={};
-        dataF_test={};
-        dataS_test={};
-        Data_test={};
-        
-        start= [(phip0 + phin0)./2 , (phin0 - phip0)./2];                       %Start location for Phi- with Phi+ in zero state    
-        sweep=[(phip0+phin_path_arr)./2; (phin_path_arr-phip0)./2]';            %define sweep array for initialization Phi- sweep with Phi+ (or FFL) in zero state
-        test_sweep=[(phip_PI+phin_sweep_arr)./2; (phin_sweep_arr-phip_PI)./2]'; %define Sweep array for actual DW test points along Phi- with Phi+ (or FFL) in PI state
-      
+        if Phin 
+            start= phin0;
+            sweep=[phin_path_arr]';                                                           %Start location for Phi- with Phi+/FFL in zero state with 1-line Phi-    
+            test_sweep=[phin_sweep_arr]';                                           %define Sweep array for actual DW test points along 1-line Phi-
+        else
+            start= [(phip0 + phin0)./2 , (phin0 - phip0)./2];                       %Start location for Phi- with Phi+ in zero state    
+            sweep=[(phip0+phin_path_arr)./2; (phin_path_arr-phip0)./2]';            %define sweep array for initialization Phi- sweep with Phi+ (or FFL) in zero state
+            test_sweep=[(phip_PI+phin_sweep_arr)./2; (phin_sweep_arr-phip_PI)./2]'; %define Sweep array for actual DW test points along Phi- with Phi+ (or FFL) in PI state
+        end
+
         for n=1:ntest                                     %For each test point, conduct full initialization sweeps
+            n
             c_ma(icb_chan,start);                                               %Set Phip and Phi- to start state
-            if FF, c_ma(ffl_chan,ffl0); end                                     %If using FFL, set in 0 state to start
+            if FF, c_ma(ffl_chan,ffl0); end  
+                                                   %If using FFL, set in 0 state to start
             for i=1:size(sweep,1)                                               %Sweep Phi- with Phi+ or FFL in zero state to Phi- to pivot point
                 c_ma(icb_chan,sweep(i,:));     
                 %fprintf("Init path Meas. Phi+ = %.4f, Phi- = %.4f\n", c_ma(icb_chan(1))-c_ma(icb_chan(2)), c_ma(icb_chan(1))+c_ma(icb_chan(2)))
             end
             
-            c_ma(icb_chan,[(phip_PI+phin_path_arr(end))./2; (phin_path_arr(end)-phip_PI)./2]');   %Flip phi+ to PI state with phi- at pivot point
+            if Phin 
+                c_ma(icb_chan,phin_path_arr(end));                                                  %1-line Phi- at pivot point
+            else
+                c_ma(icb_chan,[(phip_PI+phin_path_arr(end))./2; (phin_path_arr(end)-phip_PI)./2]'); %Flip phi+ to PI state with 2-line Phi- at pivot point
+            end
             if FF, c_ma(ffl_chan,ffl_PI); end                                                   %If using FFL, set to PI state
             
             for i=1:size(test_sweep,1)                                                                 %Sweep Phi- along Phi+ or FFL = PI up to test point
                 c_ma(icb_chan, test_sweep(i,:));
                 %fprintf("Test path Meas. Phi+ = %.4f, Phi- = %.4f\n", c_ma(icb_chan(1))-c_ma(icb_chan(2)), c_ma(icb_chan(1))+c_ma(icb_chan(2)))
-            end           
-            if FF
-                %fprintf("FFL = %.2f, Phi- = %.3f\n", ffl_PI , phin_sweep_arr(end))
-                %fprintf("Test Point Meas. FFL = %.4f, Phi- = %.4f\n", c_ma(ffl_chan), c_ma(icb_chan(1))+c_ma(icb_chan(2)))
+            end
+            
+            if Phin
+                %fprintf("FFL = %.4f, Phi- = %.4f\n", ffl_PI , phin_sweep_arr(end))
+                %fprintf("Test Point Meas. FFL = %.4f, Phi- = %.5f\n", c_ma(ffl_chan), c_ma(icb_chan)) %DO NOT RUN!!! Measuring current kicks JDPD out of state
             else
-                %fprintf("Phi+ = %.2f, Phi- = %.3f\n", phip_PI , phin_sweep_arr(end))
-                %fprintf("Test Point Meas. Phi+ = %.4f, Phi- = %.4f\n", c_ma(icb_chan(1))-c_ma(icb_chan(2)), c_ma(icb_chan(1))+c_ma(icb_chan(2)))
+                if FF
+                    %fprintf("FFL = %.2f, Phi- = %.3f\n", ffl_PI , phin_sweep_arr(end))
+                    %fprintf("Test Point Meas. FFL = %.4f, Phi- = %.4f\n", c_ma(ffl_chan), c_ma(icb_chan(1))+c_ma(icb_chan(2)))
+                else
+                    %fprintf("Phi+ = %.2f, Phi- = %.3f\n", phip_PI , phin_sweep_arr(end))
+                    %fprintf("Test Point Meas. Phi+ = %.4f, Phi- = %.4f\n", c_ma(icb_chan(1))-c_ma(icb_chan(2)), c_ma(icb_chan(1))+c_ma(icb_chan(2)))
+                end
             end
 
             switch test_flag                                                                 %Run tests with Phi- at test point with Phi+ or FFL = PI in specified order
                 case 1
                     [e_test(n), e_pat_test(n), e_ns_test(n), e_ds_test(n), e_os_test(n)]=test_ER();  
                 case 2
-                    [Data_test{n}, f_test{n}, dataF_test{n}, dataS_test{n}]=test_VNA();
+                    [Data_test{n}, f_test{n}]=test_VNA();
                 case 3
-                    [Data_test{n}, f_test{n}, dataF_test{n}, dataS_test{n}]=test_VNA();
+                    [Data_test{n}, f_test{n}]=test_VNA();
                     [e_test(n), e_pat_test(n), e_ns_test(n), e_ds_test(n), e_os_test(n)]=test_ER(); 
                 case 4
                     [e_test(n), e_pat_test(n), e_ns_test(n), e_ds_test(n), e_os_test(n)]=test_ER();  
-                    [Data_test{n}, f_test{n}, dataF_test{n}, dataS_test{n}]=test_VNA();
+                    [Data_test{n}, f_test{n}]=test_VNA();
            end
         end
         if test_flag==1
             Data_test= {nan};
             f_test= {nan};
-            dataF_test= {nan};
-            dataS_test= {nan};
         elseif test_flag==2
             e_test=nan;
             e_pat_test=nan;   
@@ -519,102 +450,17 @@ function [Data1, AvgPwr1, e1, e1_pat, Data2, AvgPwr2, e2, e2_pat]= Double_Well_S
         [p, b_er, ns_er, ds_er, os_er] = pattern_test_spliterrors(pattest,edges,[],0);  %run test pattern, no patclears, assume trigger on variable "edges" (defined as 1 or rising edge), split and categorize errors
            
         e_pat_arg= 1-p;
-        e_bit_arg= b_er/(bitwise);
-        e_ns_arg=  ns_er/(bitwise);
-        e_ds_arg=  ds_er/(bitwise);
-        e_os_arg=  os_er/(bitwise);
+        e_bit_arg= b_er/(bits);
+        e_ns_arg=  ns_er/(bits);
+        e_ds_arg=  ds_er/(bits);
+        e_os_arg=  os_er/(bits);
         %%%fprintf("Pat ER is %.2f and Bit ER rate is %.4f [%.2f NS %.2f DS %.2f OS]  \n", e_pat_arg, e_bit_arg, e_ns_arg, e_ds_arg, e_os_arg);
     end  
 
-    function [Data_arg, f_arg, dataF_arg, dataS_arg]=test_VNA()
+    function [Data_arg, f_arg]=test_VNA()
         [f_arg, dataF_arg, dataS_arg]= v.getData;
         Data_arg=[f_arg' dataF_arg' dataS_arg(1:2:end)'  dataS_arg(2:2:end)']; 
         avgp=mean(Data_arg(idx1:idx2,2));
         %%%fprintf("@%.2f GHz, Avg S21 = %.2f dB\n", round(mean(sample_range(1,:))./1e9,2), avgp)       
     end
-
-
-%Old version of code
-
-%{
-    function  [e_test, e_pat_test, Data_test, f_test, dataF_test, dataS_test]= Sweep_Phip(phin_path_arr, phin_sweep_arr)
-        e_test=[];
-        e_pat_test=[];
-        f_test={};
-        dataF_test={};
-        dataS_test={};
-        Data_test={};
-
-        start= [(phip0 + phin0)./2 , (phin0 - phip0)./2]; %Start location for Phi- with Phi+=0
-        icb=start;
-        test_sweep=[(phip_PI+phin_sweep_arr)./2; (phin_sweep_arr-phip_PI)./2]'; %Sweep array for first actual DW test points along Phi-
-        for j=1:length(test_sweep)                                              %For each test point, conduct full initialization sweeps
-            c_ma(icb_chan,start);
-            sweep=[(phip0+phin_path_arr)./2; (phin_path_arr-phip0)./2]';        %sweep array for first initial Phi- sweep along Phi+ = 0
-            for i=1:length(sweep)                                               %Sweep Phi- along Phi+=0 to pivot point
-                c_ma(icb_chan,sweep(i,:));           
-            end
-            %c_ma(icb_chan,[(phip0+phin_path_var(end))./2; (phin_path_var(end)-phip0)./2]');                                %phi+ in 0 state with phi- at pivot point
-            c_ma(icb_chan,[(phip_PI+phin_path_arr(end))./2; (phin_path_arr(end)-phip_PI)./2]');   %Flip phi+ to PI state with phi- at pivot point
-            for i=1:j                                                                           %Sweep Phi- along Phi+ = PI up to test point, first sweep
-                c_ma(icb_chan, test_sweep(i,:));
-            end           
-            icb= test_sweep(j,:);                                                            %Run tests with Phi- at test point with Phi+=PI 
-            fprintf("Phi+ = %.2f, Phi- = %.3f\n", phip_PI , phin_sweep_arr(j))            
-            switch test_flag
-                case 1
-                    [e_test(j), e_pat_test(j)]=test_ER();  
-                case 2
-                    [Data_test{j}, f_test{j}, dataF_test{j}, dataS_test{j}]=test_VNA();
-                case 3
-                    [Data_test{j}, f_test{j}, dataF_test{j}, dataS_test{j}]=test_VNA();
-                    [e_test(j), e_pat_test(j)]=test_ER();  
-                case 4
-                    [e_test(j), e_pat_test(j)]=test_ER();  
-                    [Data_test{j}, f_test{j}, dataF_test{j}, dataS_test{j}]=test_VNA();
-           end
-        end
-    end
-  
-    function [e_test, e_pat_test, Data_test, f_test, dataF_test, dataS_test]=Sweep_FFL(phin_path_arr, phin_sweep_arr)
-        e_test=[];
-        e_pat_test=[];
-        f_test={};
-        dataF_test={};
-        dataS_test={};
-        Data_test={};
-
-        start= [phin0./2 , phin0./2];
-        icb=start;
-        test_sweep=[phin_sweep_arr./2; phin_sweep_arr./2]';
-        c_ma(icb_chan,start);
-        for j=1:length(test_sweep)        
-            c_ma(ffl_chan,phip0);
-            sweep=[phin_path_arr./2; phin_path_arr./2]';
-            for i=1:length(sweep)
-                c_ma(icb_chan,sweep(i,:));
-            end
-            %c_ma(ffl_chan,phip0); %phi plus in 0 state with phi minus at end of inital path
-            c_ma(ffl_chan,phip_PI); % phi plus in PI state with phi minus at end of inital path   
-            for i=1:j
-                c_ma(icb_chan, test_sweep(i,:));
-            end
-            icb= test_sweep(j,:);
-            fprintf("FFL = %.2f, Phi- = %.3f\n", phip_PI , phin_sweep_arr(j))
-            switch test_flag
-                case 1
-                    [e_test(j), e_pat_test(j)]=test_ER();  
-                case 2
-                    [Data_test{j}, f_test{j}, dataF_test{j}, dataS_test{j}]=test_VNA();
-                case 3
-                    [Data_test{j}, f_test{j}, dataF_test{j}, dataS_test{j}]=test_VNA();
-                    [e_test(j), e_pat_test(j)]=test_ER();  
-                case 4
-                    [e_test(j), e_pat_test(j)]=test_ER();  
-                    [Data_test{j}, f_test{j}, dataF_test{j}, dataS_test{j}]=test_VNA();
-            end
-        end
-    end
-%}
-
 end

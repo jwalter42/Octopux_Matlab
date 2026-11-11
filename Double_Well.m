@@ -28,7 +28,6 @@ function [Data1, AvgPwr1, e1, e1_pat, e1_ns, e1_ds, e1_os, Data2, AvgPwr2, e2, e
     if nargin<16 || isempty(test_flag), test_flag=2; end
     if nargin<17 || isempty(tag), tag=""; end
     if nargin<18 || isempty(loop_times), loop_times=1; end
-
     %Global equipment definitions/ error catches
     if ~isfinite(loop_times) || loop_times < 1 || loop_times ~= fix(loop_times)
         disp("loop_times not a positive integer, check variable definitions")
@@ -192,7 +191,6 @@ function [Data1, AvgPwr1, e1, e1_pat, e1_ns, e1_ds, e1_os, Data2, AvgPwr2, e2, e
         e2_ds_mean=mean(mean(e2_ds,1),3);
         e1_os_mean=mean(mean(e1_os,1),3);
         e2_os_mean=mean(mean(e2_os,1),3);
-
         if (ischar(bitwise) || isstring(bitwise)) && contains(lower(string(bitwise)),"all")
             bit_visibility="on";
             pattern_visibility="on";
@@ -351,13 +349,6 @@ function [Data1, AvgPwr1, e1, e1_pat, e1_ns, e1_ds, e1_os, Data2, AvgPwr2, e2, e
     end  
    %sweep test for both phip and ffl, use for sweep up and sweep down
    function  [e_test, e_pat_test,  e_ns_test, e_ds_test, e_os_test, Data_test, f_test]= DW_Test(phin_path_arr, phin_sweep_arr)
-        e_test=[];      %Temporary function variable initialization 
-        e_pat_test=[];
-        e_ns_test=[];
-        e_ds_test=[];
-        e_os_test=[];
-        f_test={};
-        Data_test={};
         
         if Phin 
             start= phin0;                                                           %Start location for Phi- with Phi+/FFL in zero state with 1-line Phi-    
@@ -393,7 +384,6 @@ function [Data1, AvgPwr1, e1, e1_pat, e1_ns, e1_ds, e1_os, Data2, AvgPwr2, e2, e
                 c_ma(icb_chan, test_sweep(i,:));
                 %fprintf("Test path Meas. Phi+ = %.4f, Phi- = %.4f\n", c_ma(icb_chan(1))-c_ma(icb_chan(2)), c_ma(icb_chan(1))+c_ma(icb_chan(2))) %DO NOT RUN!!! Measuring current kicks JDPD out of state
             end
-
 
             if Phin
                 fprintf("FFL = %.4f, Phi- = %.4f\n", ffl_PI , phin_sweep_arr(j))
@@ -433,11 +423,6 @@ function [Data1, AvgPwr1, e1, e1_pat, e1_ns, e1_ds, e1_os, Data2, AvgPwr2, e2, e
         end
     end
     function [e_bit_arg, e_pat_arg, e_ns_arg, e_ds_arg, e_os_arg]=test_ER()     
-		e_pat_arg= [];
-        e_bit_arg= [];
-		e_ns_arg= [];
-		e_ds_arg= [];
-		e_os_arg= [];
         for n=1:ntest  %test pattern ntimes at each bias level
             [p, b_er, ns_er, ds_er, os_er] = pattern_test_spliterrors(pattest,edges,[],0);  %run test pattern, no patclears, assume trigger on variable "edges" (defined as 1 or rising edge), split and categorize errors
 			e_pat_arg(n,1)= (1-p);
